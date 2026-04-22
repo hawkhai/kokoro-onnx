@@ -1,0 +1,6 @@
+/audio.wav
+/kokoro-v1.1-zh.onnx
+/voices-v1.1-zh.bin
+/kokoro-v1.0.fp16.onnx
+/kokoro-v1.0.int8.onnx
+/voices-v1.0.bin
