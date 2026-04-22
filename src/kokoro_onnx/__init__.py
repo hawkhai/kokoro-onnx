@@ -28,8 +28,12 @@ class Kokoro:
         vocab_config: dict | str | None = None,
     ):
         # Show useful information for bug reports
+        try:
+            _ver = importlib.metadata.version('kokoro-onnx')
+        except importlib.metadata.PackageNotFoundError:
+            _ver = "dev"
         log.debug(
-            f"koko-onnx version {importlib.metadata.version('kokoro-onnx')} on {platform.platform()} {platform.version()}"
+            f"koko-onnx version {_ver} on {platform.platform()} {platform.version()}"
         )
         self.config = KoKoroConfig(model_path, voices_path, espeak_config)
         self.config.validate()
