@@ -272,10 +272,11 @@ class KokoroTts {
     final tokens = _tokenizer!.tokenize(phonemes);
     if (tokens.isEmpty) return Float32List(0);
 
-    // Select voice style by token count
-    // Voice style array is 2D: [num_phonemes, style_dim]
-    // We select the row corresponding to our token count
-    final styleDim = voiceStyle.length ~/ 512; // 512 is the max phoneme count dimension
+    // Select voice style by token count.
+    // Voice array shape is (510, 1, 256) flattened to 130560 elements.
+    // Each phoneme length has a 256-dim style vector.
+    // Layout: element[length][0][j] = flat[length * 256 + j]
+    const styleDim = 256;
     final tokenCount = tokens.length;
     final styleOffset = tokenCount * styleDim;
 
