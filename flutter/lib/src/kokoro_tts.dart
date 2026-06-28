@@ -306,13 +306,13 @@ class KokoroTts {
     double speed,
     bool trim,
   ) async {
-    // Pad tokens with 0 at start and end
-    final paddedTokens = [0, ...tokens, 0];
+    // Pad tokens with 0 at start and end, convert to Int64List (model requires int64)
+    final paddedTokens = Int64List.fromList([0, ...tokens, 0]);
 
     // Create input tensors
     final inputIds = await OrtValue.fromList(paddedTokens, [1, paddedTokens.length]);
     final styleTensor = await OrtValue.fromList(style.toList(), [1, style.length]);
-    final speedTensor = await OrtValue.fromList([speed], [1]);
+    final speedTensor = await OrtValue.fromList(Float32List.fromList([speed]), [1]);
 
     try {
       // Determine input names (handle both old and new model formats)
