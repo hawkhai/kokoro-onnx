@@ -1,12 +1,58 @@
+import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:ffi/ffi.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_kokoro/flutter_kokoro.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
   runApp(const MyApp());
+}
+
+// Windows MCI API for audio playback
+typedef MciSendStringNative = Int32 Function(
+    Pointer<Utf16> command, Pointer<Utf16> retString, Uint32 retLen, IntPtr hwnd);
+typedef MciSendStringDart = int Function(
+    Pointer<Utf16> command, Pointer<Utf16> retString, int retLen, int hwnd);
+
+class _WindowsAudioPlayer {
+  static DynamicLibrary? _winmm;
+  static MciSendStringDart? _mciSendString;
+
+  static void _init() {
+    if (_winmm != null) return;
+    _winmm = DynamicLibrary.open('winmm.dll');
+    _mciSendString = _winmm!
+        .lookupFunction<MciSendStringNative, MciSendStringDart>(
+            'mciSendStringW');
+  }
+
+  static Future<void> playWavFile(String path) async {
+    _init();
+    // Close any previous device
+    _send('close kokoro_wav');
+    // Open the WAV file
+    _send('open "$path" type waveaudio alias kokoro_wav');
+    // Play it
+    _send('play kokoro_wav');
+  }
+
+  static Future<void> stop() async {
+    _init();
+    _send('stop kokoro_wav');
+    _send('close kokoro_wav');
+  }
+
+  static void _send(String command) {
+    final cmdPtr = command.toNativeUtf16();
+    try {
+      _mciSendString!(cmdPtr, nullptr, 0, 0);
+    } finally {
+      calloc.free(cmdPtr);
+    }
+  }
 }
 
 class MyApp extends StatefulWidget {
@@ -50,7 +96,8 @@ class _MyAppState extends State<MyApp> {
         return;
       }
       if (!Directory(espeakDataPath).existsSync()) {
-        setState(() => _status = 'espeak-ng-data not found at $espeakDataPath');
+        setState(
+            () => _status = 'espeak-ng-data not found at $espeakDataPath');
         return;
       }
 
@@ -99,16 +146,19 @@ class _MyAppState extends State<MyApp> {
   Future<void> _playAudio(Float32List samples, int sampleRate) async {
     try {
       setState(() => _playing = true);
-      // Encode to WAV and write to temp file
+
+      // Encode to WAV
       final wavBytes = WavEncoder.encode(samples, sampleRate);
-      final tempDir = Directory.systemTemp;
-      final tempFile = File(p.join(tempDir.path, 'kokoro_tts_output.wav'));
+      final tempFile = File(
+          p.join(Directory.systemTemp.path, 'kokoro_tts_output.wav'));
       await tempFile.writeAsBytes(wavBytes, flush: true);
 
-      // Play with system default player
-      await Process.run('start', ['', tempFile.path], runInShell: true);
-      // Reset playing state after a short delay (system player is async)
-      Future.delayed(const Duration(seconds: 1), () {
+      // Play with Windows MCI
+      await _WindowsAudioPlayer.playWavFile(tempFile.path);
+
+      // Estimate playback duration and reset state
+      final durationMs = (samples.length / sampleRate * 1000).round();
+      Future.delayed(Duration(milliseconds: durationMs + 200), () {
         if (mounted) setState(() => _playing = false);
       });
     } catch (e) {
@@ -117,6 +167,11 @@ class _MyAppState extends State<MyApp> {
         _status = 'Playback error: $e';
       });
     }
+  }
+
+  Future<void> _stopAudio() async {
+    await _WindowsAudioPlayer.stop();
+    setState(() => _playing = false);
   }
 
   @override
@@ -158,21 +213,43 @@ class _MyAppState extends State<MyApp> {
                   items: _voices
                       .map((v) => DropdownMenuItem(value: v, child: Text(v)))
                       .toList(),
-                  onChanged: (v) => setState(() => _selectedVoice = v ?? ''),
+                  onChanged: (v) =>
+                      setState(() => _selectedVoice = v ?? ''),
                 ),
                 const SizedBox(height: 8),
                 CheckboxListTile(
                   title: const Text('Auto-play after synthesis'),
                   value: _autoPlay,
-                  onChanged: (v) => setState(() => _autoPlay = v ?? true),
+                  onChanged: (v) =>
+                      setState(() => _autoPlay = v ?? true),
                   controlAffinity: ListTileControlAffinity.leading,
                   contentPadding: EdgeInsets.zero,
                 ),
                 const SizedBox(height: 8),
-                ElevatedButton.icon(
-                  onPressed: _playing ? null : _synthesize,
-                  icon: Icon(_playing ? Icons.hourglass_top : Icons.play_arrow),
-                  label: Text(_playing ? 'Playing...' : 'Synthesize & Play'),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: _playing ? null : _synthesize,
+                        icon: Icon(
+                            _playing ? Icons.hourglass_top : Icons.play_arrow),
+                        label: Text(
+                            _playing ? 'Playing...' : 'Synthesize & Play'),
+                      ),
+                    ),
+                    if (_playing) ...[
+                      const SizedBox(width: 8),
+                      ElevatedButton.icon(
+                        onPressed: _stopAudio,
+                        icon: const Icon(Icons.stop),
+                        label: const Text('Stop'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ],

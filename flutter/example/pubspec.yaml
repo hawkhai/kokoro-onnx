@@ -20,6 +20,7 @@ dependencies:
   flutter_kokoro:
     path: ../
   path: ^1.9.0
+  ffi: ^2.1.0
 
 dev_dependencies:
   integration_test:
