@@ -34,5 +34,6 @@ export 'src/voice_manager.dart' show VoiceManager;
 export 'src/phonemizer.dart' show Phonemizer;
 export 'src/tokenizer.dart' show Tokenizer;
 export 'src/audio_processor.dart' show AudioProcessor;
+export 'src/wav_encoder.dart' show WavEncoder;
 export 'src/npz_parser.dart' show NpzParser, NpyArray;
 export 'flutter_kokoro_windows.dart' show FlutterKokoroWindows;

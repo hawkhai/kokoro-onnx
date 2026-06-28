@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_kokoro/flutter_kokoro.dart';
@@ -17,10 +18,13 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   final _kokoro = KokoroTts();
-  final _textController = TextEditingController(text: 'Hello, this is a test of Kokoro text to speech.');
+  final _textController = TextEditingController(
+      text: 'Hello, this is a test of Kokoro text to speech.');
   String _status = 'Not initialized';
   List<String> _voices = [];
   String _selectedVoice = '';
+  bool _playing = false;
+  bool _autoPlay = true;
 
   @override
   void initState() {
@@ -32,32 +36,21 @@ class _MyAppState extends State<MyApp> {
     try {
       setState(() => _status = 'Initializing...');
 
-      // Paths relative to the executable location.
-      // Model files should be placed in the models/ directory next to the exe.
       final exeDir = p.dirname(Platform.resolvedExecutable);
       final modelPath = p.join(exeDir, 'models', 'kokoro-v1.0.onnx');
       final voicesPath = p.join(exeDir, 'models', 'voices-v1.0.bin');
       final espeakDataPath = p.join(exeDir, 'data', 'espeak-ng-data');
 
-      // Verify files exist
       if (!File(modelPath).existsSync()) {
-        setState(() {
-          _status = 'Model not found at $modelPath\n'
-              'Please copy kokoro-v1.0.onnx to the models/ directory next to the executable.';
-        });
+        setState(() => _status = 'Model not found at $modelPath');
         return;
       }
       if (!File(voicesPath).existsSync()) {
-        setState(() {
-          _status = 'Voices not found at $voicesPath\n'
-              'Please copy voices-v1.0.bin to the models/ directory next to the executable.';
-        });
+        setState(() => _status = 'Voices not found at $voicesPath');
         return;
       }
       if (!Directory(espeakDataPath).existsSync()) {
-        setState(() {
-          _status = 'espeak-ng-data not found at $espeakDataPath';
-        });
+        setState(() => _status = 'espeak-ng-data not found at $espeakDataPath');
         return;
       }
 
@@ -71,7 +64,7 @@ class _MyAppState extends State<MyApp> {
       setState(() {
         _voices = voices;
         _selectedVoice = voices.isNotEmpty ? voices.first : '';
-        _status = 'Ready (${voices.length} voices available)';
+        _status = 'Ready (${voices.length} voices)';
       });
     } catch (e) {
       setState(() => _status = 'Error: $e');
@@ -91,12 +84,38 @@ class _MyAppState extends State<MyApp> {
       final durationSec = audio.length / sampleRate;
       setState(() {
         _status = 'Generated ${audio.length} samples '
-            '(${durationSec.toStringAsFixed(1)}s audio) '
-            'at ${sampleRate}Hz in ${stopwatch.elapsedMilliseconds}ms';
+            '(${durationSec.toStringAsFixed(1)}s) '
+            'in ${stopwatch.elapsedMilliseconds}ms';
       });
-      // TODO: Play audio using a player package (e.g., just_audio)
+
+      if (audio.isNotEmpty && _autoPlay) {
+        await _playAudio(audio, sampleRate);
+      }
     } catch (e) {
       setState(() => _status = 'Error: $e');
+    }
+  }
+
+  Future<void> _playAudio(Float32List samples, int sampleRate) async {
+    try {
+      setState(() => _playing = true);
+      // Encode to WAV and write to temp file
+      final wavBytes = WavEncoder.encode(samples, sampleRate);
+      final tempDir = Directory.systemTemp;
+      final tempFile = File(p.join(tempDir.path, 'kokoro_tts_output.wav'));
+      await tempFile.writeAsBytes(wavBytes, flush: true);
+
+      // Play with system default player
+      await Process.run('start', ['', tempFile.path], runInShell: true);
+      // Reset playing state after a short delay (system player is async)
+      Future.delayed(const Duration(seconds: 1), () {
+        if (mounted) setState(() => _playing = false);
+      });
+    } catch (e) {
+      setState(() {
+        _playing = false;
+        _status = 'Playback error: $e';
+      });
     }
   }
 
@@ -117,7 +136,8 @@ class _MyAppState extends State<MyApp> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Status: $_status', style: Theme.of(context).textTheme.bodyMedium),
+              Text('Status: $_status',
+                  style: Theme.of(context).textTheme.bodyMedium),
               const SizedBox(height: 16),
               TextField(
                 controller: _textController,
@@ -140,11 +160,19 @@ class _MyAppState extends State<MyApp> {
                       .toList(),
                   onChanged: (v) => setState(() => _selectedVoice = v ?? ''),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 8),
+                CheckboxListTile(
+                  title: const Text('Auto-play after synthesis'),
+                  value: _autoPlay,
+                  onChanged: (v) => setState(() => _autoPlay = v ?? true),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: EdgeInsets.zero,
+                ),
+                const SizedBox(height: 8),
                 ElevatedButton.icon(
-                  onPressed: _synthesize,
-                  icon: const Icon(Icons.play_arrow),
-                  label: const Text('Synthesize'),
+                  onPressed: _playing ? null : _synthesize,
+                  icon: Icon(_playing ? Icons.hourglass_top : Icons.play_arrow),
+                  label: Text(_playing ? 'Playing...' : 'Synthesize & Play'),
                 ),
               ],
             ],
