@@ -40,14 +40,39 @@ class NpzParser {
       }
 
       final compressionMethod = _readUint16LE(bytes, offset + 8);
-      final compressedSize = _readUint32LE(bytes, offset + 18);
-      final uncompressedSize = _readUint32LE(bytes, offset + 22);
+      var compressedSize = _readUint32LE(bytes, offset + 18);
+      var uncompressedSize = _readUint32LE(bytes, offset + 22);
       final nameLength = _readUint16LE(bytes, offset + 26);
       final extraLength = _readUint16LE(bytes, offset + 28);
 
       final nameStart = offset + 30;
       final name = utf8.decode(bytes.sublist(nameStart, nameStart + nameLength));
-      final dataStart = nameStart + nameLength + extraLength;
+      final extraStart = nameStart + nameLength;
+      final dataStart = extraStart + extraLength;
+
+      // Handle ZIP64: when size fields are 0xFFFFFFFF, the real values
+      // are stored as 8-byte integers in the extra field.
+      if (extraLength > 0 &&
+          (compressedSize == 0xFFFFFFFF || uncompressedSize == 0xFFFFFFFF)) {
+        int pos = extraStart;
+        while (pos + 4 <= extraStart + extraLength) {
+          final headerId = _readUint16LE(bytes, pos);
+          final dataSize = _readUint16LE(bytes, pos + 2);
+          if (headerId == 0x0001 && pos + 4 + dataSize <= extraStart + extraLength) {
+            int fieldPos = pos + 4;
+            if (uncompressedSize == 0xFFFFFFFF && fieldPos + 8 <= extraStart + extraLength) {
+              uncompressedSize = _readUint64LE(bytes, fieldPos);
+              fieldPos += 8;
+            }
+            if (compressedSize == 0xFFFFFFFF && fieldPos + 8 <= extraStart + extraLength) {
+              compressedSize = _readUint64LE(bytes, fieldPos);
+              fieldPos += 8;
+            }
+            break;
+          }
+          pos += 4 + dataSize;
+        }
+      }
 
       // Only handle stored (uncompressed) entries - numpy saves as stored by default
       if (compressionMethod == 0) {
@@ -165,6 +190,13 @@ class NpzParser {
         (bytes[offset + 1] << 8) |
         (bytes[offset + 2] << 16) |
         (bytes[offset + 3] << 24);
+  }
+
+  static int _readUint64LE(Uint8List bytes, int offset) {
+    // Read as two 32-bit halves to avoid sign issues with bit shifting.
+    final lo = _readUint32LE(bytes, offset);
+    final hi = _readUint32LE(bytes, offset + 4);
+    return lo + hi * 0x100000000; // hi * 2^32
   }
 }
 
