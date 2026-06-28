@@ -147,10 +147,14 @@ class _MyAppState extends State<MyApp> {
     try {
       setState(() => _playing = true);
 
-      // Encode to WAV
+      // Stop any previous playback first
+      await _WindowsAudioPlayer.stop();
+
+      // Encode to WAV with unique filename to avoid file locks
       final wavBytes = WavEncoder.encode(samples, sampleRate);
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
       final tempFile = File(
-          p.join(Directory.systemTemp.path, 'kokoro_tts_output.wav'));
+          p.join(Directory.systemTemp.path, 'kokoro_tts_$timestamp.wav'));
       await tempFile.writeAsBytes(wavBytes, flush: true);
 
       // Play with Windows MCI
