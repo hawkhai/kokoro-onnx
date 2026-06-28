@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">Kokoro TTS</string>
+    <string name="btn_generate">Generate Speech</string>
+    <string name="btn_play">Play</string>
+    <string name="btn_stop">Stop</string>
+    <string name="hint_text">Enter text to speak...</string>
+    <string name="label_voice">Voice:</string>
+    <string name="label_speed">Speed:</string>
+    <string name="label_status">Ready</string>
+    <string name="label_model_status">Model: Not loaded</string>
+</resources>
